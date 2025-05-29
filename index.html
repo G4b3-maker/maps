@@ -8,7 +8,74 @@
       width: 100%;
     }
   </style>
-  <script src="https://maps.googleapis.com/maps/api/js?key=AIzaSyBBaoOUGohHPjpoHWv0PFQai5gqQb7LMbU" defer></script>
+  <script src="https://maps.googleapis.com/maps/api/js?key=YOUR_API_KEY" defer>function createInfoWindowContent(dataObj) {
+  return Object.entries(dataObj)
+    .map(([key, val]) => `<strong>${key}:</strong> ${val}`)
+    .join("<br>");
+}
+
+function plotResellers() {
+  resellerData.forEach(reseller => {
+    const address = reseller["Billing Zip/Postal Code"] || reseller["Billing City"] || reseller["Address"];
+    if (!address) return;
+    geocodeAddress(address, position => {
+      const marker = new google.maps.Marker({
+        map,
+        position,
+        title: reseller["Company Name"] || reseller["Name"],
+        icon: "http://maps.google.com/mapfiles/ms/icons/orange-dot.png"
+      });
+      const infoWindow = new google.maps.InfoWindow({
+        content: createInfoWindowContent(reseller)
+      });
+      marker.addListener("click", () => {
+        clearCustomers();
+        showCustomersForReseller(reseller["Company Name"] || reseller["Name"]);
+        infoWindow.open(map, marker);
+      });
+    });
+  });
+}
+
+function showCustomersForReseller(resellerName) {
+  const filtered = customerData.filter(c => c["Reseller"] === resellerName);
+  filtered.forEach(customer => {
+    const address = customer["Billing City"] || customer["Billing Zip/Postal Code"] || customer["Address"];
+    if (!address) return;
+    geocodeAddress(address, position => {
+      const marker = new google.maps.Marker({
+        map,
+        position,
+        title: customer["Company Name"] || customer["Name"],
+        icon: "http://maps.google.com/mapfiles/ms/icons/green-dot.png"
+      });
+      const infoWindow = new google.maps.InfoWindow({
+        content: createInfoWindowContent(customer)
+      });
+      marker.addListener("click", () => {
+        infoWindow.open(map, marker);
+      });
+      customerMarkers.push(marker);
+    });
+  });
+}
+
+function clearCustomers() {
+  customerMarkers.forEach(marker => marker.setMap(null));
+  customerMarkers = [];
+}
+
+function geocodeAddress(address, callback) {
+  geocoder.geocode({ address }, (results, status) => {
+    if (status === "OK") {
+      callback(results[0].geometry.location);
+    } else {
+      console.warn("Geocode failed for", address, status);
+    }
+  });
+}
+
+</script>
 </head>
 <body onload="initMap()">
   <div id="map"></div>
@@ -20,9 +87,9 @@
     let customerData = [];
     let customerMarkers = [];
 
-    const regionCSVUrl = 'region.csv';
-const customerCSVUrl = 'customers.csv';
-const resellerCSVUrl = 'resellers.csv';
+    const regionCSVUrl = 'https://g4b3-maker.github.io/maps/region.csv';
+const customerCSVUrl = 'https://g4b3-maker.github.io/maps/customers.csv';
+const resellerCSVUrl = 'https://g4b3-maker.github.io/maps/resellers.csv';
 
     function initMap() {
   map = new google.maps.Map(document.getElementById("map"), {
