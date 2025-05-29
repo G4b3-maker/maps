@@ -8,8 +8,10 @@
       width: 100%;
     }
   </style>
+  <!-- Proper Google Maps API load -->
   <script src="https://maps.googleapis.com/maps/api/js?key=AIzaSyBBaoOUGohHPjpoHWv0PFQai5gqQb7LMbU&callback=initMap" async defer></script>
-  <link rel="icon" href="data:," /> <!-- prevents favicon 404 -->
+  <!-- Prevent favicon 404 -->
+  <link rel="icon" href="data:," />
 </head>
 <body>
   <div id="map"></div>
@@ -25,42 +27,14 @@
     const customerCSVUrl = 'https://g4b3-maker.github.io/maps/customers.csv';
     const resellerCSVUrl = 'https://g4b3-maker.github.io/maps/resellers.csv';
 
-    function initMap() {
-      map = new google.maps.Map(document.getElementById("map"), {
-        zoom: 6,
-        center: { lat: 54.5, lng: -3.5 },
-      });
-      geocoder = new google.maps.Geocoder();
-
-      fetch(regionCSVUrl)
-        .then(response => response.text())
-        .then(data => {
-          const rows = parseCSV(data);
-          drawRegions(rows);
-        });
-
-      fetch(resellerCSVUrl)
-        .then(response => response.text())
-        .then(data => {
-          resellerData = parseCSV(data);
-          plotResellers();
-        });
-
-      fetch(customerCSVUrl)
-        .then(response => response.text())
-        .then(data => {
-          customerData = parseCSV(data);
-        });
-    }
-
     function parseCSV(content) {
       const rows = content.trim().split("\n");
       const headers = rows[0].split(',');
       return rows.slice(1).map(row => {
-        const values = row.split(/,(?=(?:[^\"]*\"[^\"]*\")*[^\"]*$)/);
+        const values = row.split(/,(?=(?:[^"]*"[^"]*")*[^"]*$)/);
         const obj = {};
         headers.forEach((header, i) => {
-          obj[header.trim().replace(/^\"|\"$/g, '')] = values[i] ? values[i].replace(/^\"|\"$/g, '').trim() : "";
+          obj[header.trim().replace(/^"|"$|[\r\n]/g, '')] = values[i] ? values[i].replace(/^"|"$|[\r\n]/g, '').trim() : "";
         });
         return obj;
       });
@@ -107,13 +81,48 @@
         .join("<br>");
     }
 
+    function geocodeAddress(address, callback) {
+      geocoder.geocode({ address }, (results, status) => {
+        if (status === "OK") {
+          callback(results[0].geometry.location);
+        } else {
+          console.warn("Geocode failed for", address, status);
+        }
+      });
+    }
+
+    function clearCustomers() {
+      customerMarkers.forEach(marker => marker.setMap(null));
+      customerMarkers = [];
+    }
+
+    function showCustomersForReseller(resellerName) {
+      const filtered = customerData.filter(c => c["Reseller"] === resellerName);
+      filtered.forEach(customer => {
+        const address = customer["Billing City"] || customer["Billing Zip/Postal Code"] || customer["Address"];
+        if (!address) return;
+        geocodeAddress(address, position => {
+          const marker = new google.maps.Marker({
+            map,
+            position,
+            title: customer["Company Name"] || customer["Name"],
+            icon: "http://maps.google.com/mapfiles/ms/icons/green-dot.png"
+          });
+          const infoWindow = new google.maps.InfoWindow({
+            content: createInfoWindowContent(customer)
+          });
+          marker.addListener("click", () => {
+            infoWindow.open(map, marker);
+          });
+          customerMarkers.push(marker);
+        });
+      });
+    }
+
     function plotResellers() {
       resellerData.forEach(reseller => {
         const address = reseller["Billing Zip/Postal Code"] || reseller["Billing City"] || reseller["Address"];
-        if (!address) {
-          console.warn("Missing reseller address:", reseller);
-          return;
-        }
+        if (!address) return;
         geocodeAddress(address, position => {
           const marker = new google.maps.Marker({
             map,
@@ -133,46 +142,35 @@
       });
     }
 
-    function showCustomersForReseller(resellerName) {
-      const filtered = customerData.filter(c => c["Reseller"] === resellerName);
-      filtered.forEach(customer => {
-        const address = customer["Billing City"] || customer["Billing Zip/Postal Code"] || customer["Address"];
-        if (!address) {
-          console.warn("Missing customer address:", customer);
-          return;
-        }
-        geocodeAddress(address, position => {
-          const marker = new google.maps.Marker({
-            map,
-            position,
-            title: customer["Company Name"] || customer["Name"],
-            icon: "http://maps.google.com/mapfiles/ms/icons/green-dot.png"
-          });
-          const infoWindow = new google.maps.InfoWindow({
-            content: createInfoWindowContent(customer)
-          });
-          marker.addListener("click", () => {
-            infoWindow.open(map, marker);
-          });
-          customerMarkers.push(marker);
+    function initMap() {
+      map = new google.maps.Map(document.getElementById("map"), {
+        zoom: 6,
+        center: { lat: 54.5, lng: -3.5 },
+      });
+      geocoder = new google.maps.Geocoder();
+
+      // Load region polygons
+      fetch(regionCSVUrl)
+        .then(response => response.text())
+        .then(data => {
+          const rows = parseCSV(data);
+          drawRegions(rows);
         });
-      });
-    }
 
-    function clearCustomers() {
-      customerMarkers.forEach(marker => marker.setMap(null));
-      customerMarkers = [];
-    }
+      // Load customers
+      fetch(customerCSVUrl)
+        .then(response => response.text())
+        .then(data => {
+          customerData = parseCSV(data);
+        });
 
-    function geocodeAddress(address, callback) {
-      console.log("Geocoding:", address);
-      geocoder.geocode({ address }, (results, status) => {
-        if (status === "OK") {
-          callback(results[0].geometry.location);
-        } else {
-          console.warn("Geocode failed for", address, status);
-        }
-      });
+      // Load and plot resellers
+      fetch(resellerCSVUrl)
+        .then(response => response.text())
+        .then(data => {
+          resellerData = parseCSV(data);
+          plotResellers();
+        });
     }
   </script>
 </body>
